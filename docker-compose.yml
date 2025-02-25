@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  tinyproxy:
+    image: monokal/tinyproxy
+    container_name: tinyproxy
+    networks:
+      claude-net:
+        ipv4_address: 192.168.100.2
+    ports:
+      - "8888:8888"
+    restart: unless-stopped
+    volumes:
+      - ./tinyproxy.conf:/etc/tinyproxy/tinyproxy.conf  # Custom whitelist config
+
+  claude-code:
+    image: claude-code
+    container_name: claude-agent
+    networks:
+      claude-net:
+    environment:
+      HTTP_PROXY: "http://tinyproxy:8888"
+      HTTPS_PROXY: "http://tinyproxy:8888"
+    command: >
+      /bin/sh -c "iptables -A OUTPUT -p tcp --dport 80 -j DROP &&
+                  iptables -A OUTPUT -p tcp --dport 443 -j DROP &&
+                  iptables -A OUTPUT -p tcp -d 192.168.100.2 -p tcp --dport 8888 -j ACCEPT &&
+                  exec /bin/sh"
+    read_only: true  # Prevents modifying the system
+    tmpfs:
+      - /tmp:size=100M  # Allows temporary writes
+    cap_drop:
+      - NET_ADMIN  # Prevents network modifications
+    restart: unless-stopped
+
+networks:
+  claude-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 192.168.100.0/24
